@@ -1,0 +1,263 @@
+---
+title: "DS622 - Homework1"
+author: "George Cruz"
+date: "4/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(here)
+library(caret)
+```
+
+# Assignment 1
+
+Visit the following website and explore the range of sizes of this dataset (from 100 to 5 million records).
+
+https://eforexcel.com/wp/downloads-18-sample-csv-files-data-sets-for-testing-sales/ 
+
+
+## File Selection
+Based on your computer's capabilities (memory, CPU), select 2 files you can handle (recommended one small, one large)
+
+**I picked two files, one containing $100$ records and the other containing $100,000$ sales records.**
+
+
+## Data review
+Review the structure and content of the tables, and think which two machine learning algorithms presented so far could be used to analyze the data, and how can they be applied in the suggested environment of the datasets.
+
+```{r}
+small_ds <- read.csv(here('Homework1','data','100_Sales_Records.csv'))
+large_ds <- read.csv(here('Homework1','data','100000_Sales_Records.csv'))
+```
+
+### Let's evaluate the Data
+```{r}
+dim(small_ds)
+```
+The small dataset has $100$ records with $14$ columns each. 
+
+#### Types of Attributes
+```{r}
+# list types for each attribute
+sapply(small_ds, class)
+```
+It is also always a good idea to actually eyeball your data.
+
+```{r}
+# take a peek at the first 5 rows of the data
+head(small_ds)
+```
+
+For this exercise, I will be looking to maximize profits. To that effect, we will add a factor categorizing profits as Low, Medium, High.
+
+```{r}
+Category <- cut(small_ds$Total.Profit, breaks = 3,
+                         labels = c("low", "medium", "high"))
+small_df <- data.frame(small_ds, Category)
+```
+
+```{r}
+# We need to perform the cut for the large ds as well
+Category <- cut(large_ds$Total.Profit, breaks = 3,
+                         labels = c("low", "medium", "high"))
+large_df <- data.frame(large_ds, Category)
+```
+
+#### Category Distribution
+Let’s now take a look at the number of instances (rows) that belong to each category. We can view this as an absolute count and as a percentage.
+
+```{r}
+# summarize the category distribution
+percentage <- prop.table(table(small_df$Category)) * 100
+cbind(freq=table(small_df$Species), percentage=percentage)
+```
+We can see that, for the small dataset, $69%$ of the entries correspond to small profit entries. Let's perform the same analysis for the large dataset: 
+
+```{r}
+# summarize the category distribution
+percentage <- prop.table(table(large_df$Category)) * 100
+cbind(freq=table(large_df$Species), percentage=percentage)
+```
+In this case, the high profit entries are even lower. 
+
+#### Statistical Summary
+Let's also take a look at a summary of each attribute.
+
+```{r}
+# summarize attribute distributions
+summary(small_df)
+```
+We can see that the numerical values have wide ranges.  Our target variable, $Total.Profit$ goes from a $1000 to almost 2 million dollars with a median of a little over a quarter million dollars. 
+
+#### Visualize Dataset
+We now have a basic idea about the data. We need to extend that with some visualizations.
+
+We are going to look at two types of plots:
+
+Univariate plots to better understand each attribute.
+Multivariate plots to better understand the relationships between attributes.
+
+**Univariate Plots**
+We start with some univariate plots, that is, plots of each individual variable.
+
+It is helpful with visualization to have a way to refer to just the input attributes and just the output attributes. Let’s set that up and call the inputs attributes x and the output attribute (or class) y.
+
+```{r}
+# split input and output
+x <- small_df[,9:14]
+y <- small_df[,15]
+```
+Given that the input variables are numeric, we can create box and whisker plots of each.
+
+This gives us a much clearer idea of the distribution of the input attributes:
+
+```{r}
+# boxplot for each attribute on one image
+par(mfrow=c(1,6))
+  for(i in 9:14) {
+    idx <- (i - 8)
+    boxplot(x[,idx], main = names(small_df)[i])
+  }
+```
+
+This confirms what we learned in the last section, that the high profit entries are the smallest of the transactions. 
+
+```{r}
+# barplot for class breakdown
+plot(y)
+```
+
+
+We can also look at the interactions between the variables.
+
+First let’s look at scatterplots of all pairs of attributes and color the points by class. In addition, because the scatterplots show that points for each class are generally separate, we can draw ellipses around them.
+
+We can see some clear relationships between the input attributes (trends) and between attributes and the class values (ellipses):
+
+```{r}
+# scatterplot matrix
+featurePlot(x=x, y=y, plot="ellipse")
+```
+
+Scatterplot Matrix of Small DataSet in R
+
+```{r}
+# box and whisker plots for each attribute
+featurePlot(x=x, y=y, plot="box")
+```
+Box and Whisker Plot of Iris data by Class Value
+
+```{r}
+# density plots for each attribute by category value
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+featurePlot(x=x, y=y, plot="density", scales=scales)
+```
+Density Plots of Small DataSet
+
+### Algorithm Selection
+**Write a short essay explaining your selection. Then, select one of the 2 algorithms and explore how to analyze and predict an outcome based on the data available. This will be an exploratory exercise, so feel free to show errors and warnings that raise during the analysis. Test the code with both datasets selected and compare the results. Which result will you trust if you need to make a business decision? Do you think an analysis could be prone to errors when using too much data, or when using the least amount possible?**
+
+
+
+```{r}
+
+#recode character variables to factors
+small_df$Region <- as.factor(small_df$Region)
+small_df$Item.Type <- as.factor(small_df$Item.Type)
+small_df$Sales.Channel <- as.factor(small_df$Sales.Channel)
+small_df$Order.Priority <- as.factor(small_df$Order.Priority)
+
+
+# create a list of 80% of the rows in the original dataset we can use for training
+validation_index <- createDataPartition(small_df$Category, p=0.80, list=FALSE)
+# select 20% of the data for validation
+validation <- small_df[-validation_index,]
+# use the remaining 80% of data to training and testing the models
+small_df <- small_df[validation_index,]
+```
+
+```{r}
+# Run algorithms using 10-fold cross validation
+control <- trainControl(method="cv", number=10)
+metric <- "Accuracy"
+```
+
+We are using the metric of “Accuracy” to evaluate models. This is a ratio of the number of correctly predicted instances in divided by the total number of instances in the dataset multiplied by 100 to give a percentage (e.g. 95% accurate). We will be using the metric variable when we run build and evaluate each model next.
+
+#### Build Models
+We don’t know which algorithms would be good on this problem or what configurations to use. We get an idea from the plots that some of the classes are partially linearly separable in some dimensions, so we are expecting generally good results.
+
+Let’s evaluate 2 different algorithms:
+
+Linear Discriminant Analysis (LDA)
+Random Forest (RF)
+
+We reset the random number seed before reach run to ensure that the evaluation of each algorithm is performed using exactly the same data splits. It ensures the results are directly comparable.
+
+Let’s build our two models:
+
+```{r message=FALSE, warning=FALSE}
+# a) linear algorithms
+set.seed(7)
+fit.lda <- train(Category~ Order.Priority + Region + Item.Type + Unit.Cost, data=small_df, method="lda", metric=metric, trControl=control)
+```
+
+```{r}
+# Random Forest
+set.seed(7)
+fit.rf <- train(Category~Order.Priority + Region + Item.Type + Unit.Cost, data=small_df, method="rf", metric=metric, trControl=control)
+```
+For some reason, the LDA model did not build as expected, so I used a subset of factors.
+
+#### Select Best Model
+We now have 2 models and accuracy estimations for each. We need to compare the models to each other and select the most accurate.
+
+We can report on the accuracy of each model by first creating a list of the created models and using the summary function.
+
+We can see the accuracy of each classifier and also other metrics like Kappa:
+
+```{r}
+# summarize accuracy of models
+results <- resamples(list(lda=fit.lda, rf=fit.rf))
+summary(results)
+```
+
+We can also create a plot of the model evaluation results and compare the spread and the mean accuracy of each model. There is a population of accuracy measures for each algorithm because each algorithm was evaluated 10 times (10 fold cross validation).
+
+```{r}
+# compare accuracy of models
+dotplot(results)
+```
+
+It appears the most accurate model was Random Forest.
+
+```{r}
+print(fit.rf)
+```
+
+```{r}
+print(fit.lda)
+```
+
+#### Make Predictions
+
+```{r}
+# estimate skill of LDA on the validation dataset
+predictions <- predict(fit.rf, validation)
+confusionMatrix(predictions, validation$Category)
+```
+We can see that the accuracy is 73%. It was a small validation dataset (20%).
+
+What happens when we apply this model to the large dataset?
+
+
+```{r}
+# estimate skill of LDA on the validation dataset
+predict_large <- predict(fit.rf, large_df)
+confusionMatrix(predict_large, large_df$Category)
+```
+
+### Conclusion
+We achieved an accuracy of 76% on the large data set, which indicates that our model and the Random Forest might the better of the two algorithms for this dataset. 
