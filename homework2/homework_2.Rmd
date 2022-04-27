@@ -1,0 +1,175 @@
+---
+title: "DS622 - Homework2"
+author: "George Cruz"
+date: "4/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(kableExtra.auto_format = FALSE)
+
+
+library(caret)
+library(ggplot2)
+library(here)
+library(lubridate)
+library(rpart) 
+library(rpart.plot)
+library(randomForest)
+library(skimr)
+library(tidyverse)
+```
+
+# Assignment 2
+
+### Introduction 
+Based on the latest topics presented, bring a dataset of your choice and create a Decision Tree where you can solve a classification or regression problem and predict the outcome of a particular feature or detail of the data used.
+
+#### From Kaggle
+*Cardiovascular diseases (CVDs) are the number 1 cause of death globally, taking an estimated 17.9 million lives each year, which accounts for 31% of all deaths worlwide. Heart failure is a common event caused by CVDs and this dataset contains 12 features that can be used to predict mortality by heart failure.*
+
+*Most cardiovascular diseases can be prevented by addressing behavioural risk factors such as tobacco use, unhealthy diet and obesity, physical inactivity and harmful use of alcohol using population-wide strategies.*
+
+*People with cardiovascular disease or who are at high cardiovascular risk (due to the presence of one or more risk factors such as hypertension, diabetes, hyperlipidaemia or already established disease) need early detection and management wherein a machine learning model can be of great help.*
+
+**Citation**
+Davide Chicco, Giuseppe Jurman: Machine learning can predict survival of patients with heart failure from serum creatinine and ejection fraction alone. BMC Medical Informatics and Decision Making 20, 16 (2020). [https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-020-1023-5](link)
+
+### Data review
+
+The dataset selected [https://www.kaggle.com/datasets/andrewmvd/heart-failure-clinical-data] is a kaggle dataset relating to heart failure clinical data and will allow us to build a model to predict heart failure based on certain variables. 
+
+```{r}
+data<- read.csv(here('homework2','data','heart_failure_clinical_records_dataset.csv'))
+
+```
+
+#### Let's evaluate the Data
+The dataset consists of $299$ records(observations) with $13$ variables (factors).
+```{r}
+dim(data)
+```
+
+#### Types of Attributes
+All of the attributes are numeric.  Either integer or numeric.
+```{r}
+# list types for each attribute
+sapply(data, class)
+```
+It is also always a good idea to actually eyeball your data.
+
+```{r message=FALSE, warning=FALSE}
+# take a peek at the first 5 rows of the data
+head(data)
+```
+
+#### Statistical Summary
+
+The plan is to predict heart failure based on these variables. The `skim` function allows us a quick and detailed view of the dataset.
+
+**Important Notation about the Data**  
+Sex - Gender of patient Male = 1, Female =0  
+Age - Age of patient  
+Diabetes - 0 = No, 1 = Yes  
+Anaemia - 0 = No, 1 = Yes  
+High_blood_pressure - 0 = No, 1 = Yes  
+Smoking - 0 = No, 1 = Yes  
+DEATH_EVENT - 0 = No, 1 = Yes  
+Time = Follow Up Period in days 
+
+```{r message=FALSE, warning=FALSE}
+skim(data)
+```
+
+Since the DEATH_EVENT is our target variable, let's examine it's proportions: 
+```{r message=FALSE, warning=FALSE}
+library(scales)
+
+prop <- round(prop.table(table(select(data, DEATH_EVENT), exclude = NULL))*100, 1)
+x <- paste(prop, "%", sep="")
+mat <- matrix(x, nrow = 2, ncol = 1)
+rownames(mat) <- c("0", "1")
+colnames(mat) <- c("Death Pct")
+print(mat, quote = FALSE)
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(7)
+
+# create a list of 80% of the rows in the original dataset we can use for training
+validation_index <- createDataPartition(data$DEATH_EVENT, p=0.80, list=FALSE)
+# select 20% of the data for validation
+data_test <- data[-validation_index,]
+# use the remaining 80% of data to training and testing the models
+data_train <- data[validation_index,]
+```
+
+### Decision Tree
+```{r}
+model1 <- rpart(DEATH_EVENT ~ age + sex + diabetes + high_blood_pressure,
+                         method = "class",
+                         data = data_train
+                )
+
+rpart.plot(model1)
+```
+
+Switch variables to generate 2 decision trees and compare the results.
+**In this case, I used the remaining variables in the data set**
+
+```{r message=FALSE, warning=FALSE}
+model2 <- rpart(DEATH_EVENT ~ . - age - sex - diabetes - high_blood_pressure,
+                         method = "class",
+                         data = data_train
+                )
+
+rpart.plot(model2)
+```
+
+In the first model, the biggest predictor appears to be `age`, followed by `high_blood_pressure` and `sex`.  On the second model, the biggest predictor is a little counter-intuitive: `time` between followups.  I say it's counter intuitive since it appears to indicate that **the shorter the time between visits, the higher the chance for a bad outcome**.  
+
+I'll go out on a limb and say that the reason for this is that patients in bad health will follow up with the doctor closely and, in that sense, `time` might be a red-herring. 
+
+On model2, the second biggest predictors are the `serum_creatinine` and the number of `platelets`.  
+
+### Random Forest 
+
+Create a random forest for regression and analyze the results.  For the Random forest, I will use the predictors identified by the Decision trees.
+
+```{r message=FALSE, warning=FALSE}
+rf_model <- randomForest(as.factor(DEATH_EVENT) ~ age + high_blood_pressure + sex + serum_creatinine + platelets,
+                                    data = data_train)
+rf_pred <- predict(rf_model, data_test)
+c_matrix <- confusionMatrix(rf_pred, as.factor(data_test$DEATH_EVENT))
+c_matrix
+```
+
+The resulting model gives us an accuracy of $58%$ which doesn't sound so good. 
+
+```{r message=FALSE, warning=FALSE}
+source(here("functions","draw_confusion_matrix.R"), local = knitr::knit_global())
+draw_confusion_matrix(c_matrix)
+```
+
+#### A Better Random Forest Model 
+
+When we use all the variables, the accuracy increases to 83% indicating we missed some predictors with our Decision trees.
+
+```{r message=FALSE, warning=FALSE}
+rf_model2 <- randomForest(as.factor(DEATH_EVENT) ~ .,
+                                    data = data_train)
+rf_pred2 <- predict(rf_model2, data_test)
+c_matrix2 <- confusionMatrix(rf_pred2, as.factor(data_test$DEATH_EVENT))
+draw_confusion_matrix(c_matrix2)
+```
+
+### Conclusion
+
+Based on real cases where decision trees went wrong, and 'the bad & ugly' aspects of decision trees (https://decizone.com/blog/the-good-the-bad-the-ugly-of-using-decision-trees), how can you change this perception when using the decision tree you created to solve a real problem?
+
+I feel the decision trees worked as intended.  They did fail to identify `ejection_fraction` as a significant predictor of heart failure but they did point me in the direction of `serum_creatinine` as an indicator/predictor.
+
+I believe the most important learning from this particular project is that one Machine Learning algorithm alone is probably not going to be able to satisfy or provide all of the answers and that they should used in conjunction of other ML algorithms to correlate or validate the results. 
+
+ 
