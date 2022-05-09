@@ -1,0 +1,197 @@
+---
+title: "DS622 - Homework3"
+author: "George Cruz"
+date: "4/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(kableExtra.auto_format = FALSE)
+
+
+library(caret)
+library(e1071)
+library(ggplot2)
+library(here)
+library(kernlab)
+library(lubridate)
+library(rpart) 
+library(rpart.plot)
+library(randomForest)
+library(scales)
+library(skimr)
+library(tidyverse)
+
+source(here("functions","draw_confusion_matrix.R"), local = knitr::knit_global())
+```
+
+# Assignment 3
+
+Perform an analysis of the dataset used in Homework #2 using the SVM algorithm.Compare the results with the results from previous homework.
+
+### Introduction 
+Based on the latest topics presented, bring a dataset of your choice and create a Decision Tree where you can solve a classification or regression problem and predict the outcome of a particular feature or detail of the data used.
+
+#### From Kaggle
+*Cardiovascular diseases (CVDs) are the number 1 cause of death globally, taking an estimated 17.9 million lives each year, which accounts for 31% of all deaths worlwide. Heart failure is a common event caused by CVDs and this dataset contains 12 features that can be used to predict mortality by heart failure.*
+
+*Most cardiovascular diseases can be prevented by addressing behavioural risk factors such as tobacco use, unhealthy diet and obesity, physical inactivity and harmful use of alcohol using population-wide strategies.*
+
+*People with cardiovascular disease or who are at high cardiovascular risk (due to the presence of one or more risk factors such as hypertension, diabetes, hyperlipidaemia or already established disease) need early detection and management wherein a machine learning model can be of great help.*
+
+**Citation**
+Davide Chicco, Giuseppe Jurman: Machine learning can predict survival of patients with heart failure from serum creatinine and ejection fraction alone. BMC Medical Informatics and Decision Making 20, 16 (2020). [https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-020-1023-5](link)
+
+### Data review
+
+The dataset selected [https://www.kaggle.com/datasets/andrewmvd/heart-failure-clinical-data] is a kaggle dataset relating to heart failure clinical data and will allow us to build a model to predict heart failure based on certain variables. 
+
+```{r}
+data<- read.csv(here('homework2','data','heart_failure_clinical_records_dataset.csv'))
+
+```
+
+#### Let's evaluate the Data
+The dataset consists of $299$ records(observations) with $13$ variables (factors).
+```{r}
+dim(data)
+```
+
+#### Types of Attributes
+All of the attributes are numeric.  Either integer or numeric.
+```{r}
+# list types for each attribute
+sapply(data, class)
+```
+It is also always a good idea to actually eyeball your data.
+
+```{r message=FALSE, warning=FALSE}
+# take a peek at the first 5 rows of the data
+head(data)
+```
+
+#### Statistical Summary
+
+The plan is to predict heart failure based on these variables. The `skim` function allows us a quick and detailed view of the dataset.
+
+**Important Notation about the Data**  
+Sex - Gender of patient Male = 1, Female =0  
+Age - Age of patient  
+Diabetes - 0 = No, 1 = Yes  
+Anaemia - 0 = No, 1 = Yes  
+High_blood_pressure - 0 = No, 1 = Yes  
+Smoking - 0 = No, 1 = Yes  
+DEATH_EVENT - 0 = No, 1 = Yes  
+Time = Follow Up Period in days 
+
+```{r message=FALSE, warning=FALSE}
+skim(data)
+```
+
+Since the DEATH_EVENT is our target variable, let's examine it's proportions: 
+```{r message=FALSE, warning=FALSE}
+prop <- round(prop.table(table(select(data, DEATH_EVENT), exclude = NULL))*100, 1)
+x <- paste(prop, "%", sep="")
+mat <- matrix(x, nrow = 2, ncol = 1)
+rownames(mat) <- c("0", "1")
+colnames(mat) <- c("Death Pct")
+print(mat, quote = FALSE)
+```
+
+```{r message=FALSE, warning=FALSE}
+set.seed(7)
+
+# create a list of 80% of the rows in the original dataset we can use for training
+validation_index <- createDataPartition(data$DEATH_EVENT, p=0.80, list=FALSE)
+# select 20% of the data for validation
+data_test <- data[-validation_index,]
+# use the remaining 80% of data to training and testing the models
+data_train <- data[validation_index,]
+```
+
+### SVM Models
+I tried two different approaches: 
+
+**`e1071::svm` function:**
+```{r}
+svm_model <- svm(DEATH_EVENT ~ .,
+                 data = data_train,
+                 type = 'C-classification',
+                 kernel = "linear")
+
+print(svm_model)
+```
+
+**`kernlab::ksvm` function**
+```{r}
+model.ksvm = ksvm(DEATH_EVENT ~ .,
+                  data = data_train,
+                  type="C-svc")
+print(model.ksvm)
+```
+
+
+#### Predictions
+
+**e1071**
+```{r message=FALSE, warning=FALSE}
+test_pred <- predict(svm_model, newdata = data_test)
+
+c_matrix <- confusionMatrix(table(test_pred, data_test$DEATH_EVENT))
+```
+
+The resulting model gives us an accuracy of $83%$ way better than what we got with the decision tree in Homework 2.
+
+
+```{r message=FALSE, warning=FALSE}
+
+draw_confusion_matrix(c_matrix)
+```
+
+**ksvm**
+```{r message=FALSE, warning=FALSE}
+test_pred_ksvm <- predict(model.ksvm, newdata = data_test)
+
+c_matrix2 <- confusionMatrix(table(test_pred_ksvm, data_test$DEATH_EVENT))
+
+draw_confusion_matrix(c_matrix2)
+```
+
+With Kernlab's KSVM, the accuracy goes down to 78%.  Still pretty impressive. 
+
+### Conclusion
+
+**Based on articles**
+
+https://www.hindawi.com/journals/complexity/2021/5550344/
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8137961/
+**Search for academic content (at least 3 articles) that compare the use of decision trees vs SVMs in your current area of expertise.**
+
+1. *https://www.researchgate.net/publication/223672291_An_extended_support_vector_machine_forecasting_framework_for_customer_churn_in_e-commerce*
+This article describes a Machine Learning algorithm to predicyt churn in e-commerce. Customer churn predictions are very important in e-commerce. To maintain market
+competitiveness, B2C enterprises should make full use of machine learning in customer
+relationship management to predict the potential loss of customers and devise new marketing strategies and customer retention measures according to the prediction results. This
+will help establish efficient and accurate loss prediction for e-commerce enterprises.
+
+2. *https://eprint.iacr.org/2016/736.pdf. Efficient and Private Scoring of Decision Trees, Support Vector Machines and Logistic Regression Models based on Pre-Computation.*
+In this study, the authors proposed a novel protocol for privacy preserving classification of decision trees, and improved the performance of previously proposed protocols for general hyperplane-based classifiers and for the two specific cases of support vector machines and logistic regression. Instead of comparing algorithms, they propose methods to improve on them while maintaining security concerns in mind. 
+
+3. *https://www.linkedin.com/pulse/machine-learning-predicting-supply-chain-risks-part-3-tuan-nguyen-/*
+In this LinkedIn article, the author compares the different machine learning algorithms while trying to predict supply-chain risks.  On of his conclusions is that SVM has been known as an example of a highly performant learner. In this case study, it can give a prediction accuracy of over 82%. However, one of the disadvantages of SVM lies in its computational time, which takes over 3 minutes in the case of the 8-feature set.
+
+
+**Which algorithm is recommended to get more accurate results? Is it better for classification or regression scenarios?**
+
+SVM appears to be the consensus winner in terms of more accurate results, although most articles do cite its computational requirements as a disadvantage. 
+
+In this particular assignment, SVM's performance was on par of the best model obtained in homework2: a Random Forest using all features to predict the outcome.  
+
+**Do you agree with the recommendations? Why?**
+
+I believe the most important learning from this particular project is that one Machine Learning algorithm alone is probably not going to be able to satisfy or provide all of the answers and that they should used in conjunction of other ML algorithms to correlate or validate the results. Some ML Algorithms are better suited for determinate problems and it appears that Decision trees are better for categorical data as they deal with colinearity better than SVM.  In all, I'd try more than one ML algorithm towards a prediction and settle in the best combination of performance and accuracy needed to get the job done. 
+
+
+
+
+ 
